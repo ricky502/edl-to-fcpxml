@@ -17,10 +17,12 @@ EDL JSON格式:
         ...
     ]
 
-FCPX XML注意事项（踩坑记录）:
-  - asset元素不能有frameDuration/width/height，用format="r1"引用format定义
-  - format属性放在asset-clip上，不要放在project或sequence上
-  - 文件路径必须是FCPX能访问的本地路径
+FCPXML 1.10 DTD合规要点（踩坑记录）:
+  - asset元素不能有src属性，src在media-rep子元素上
+  - asset必须包含media-rep子元素（kind="original-media"）
+  - sequence必须有format属性（#REQUIRED）
+  - asset-clip的format是可选的（#IMPLIED），默认继承parent
+  - format元素用id引用，不含frameDuration/width/height以外的多余属性
   - 所有时间值用 帧数/帧率 格式（如 142/30s），确保帧对齐
   - audioChannels必须与实际音轨一致（ffprobe查）
 """
@@ -82,7 +84,7 @@ def frame_to_fcpxml(frames: int, fps_num: int, fps_den: int) -> str:
 
 def generate_fcpxml(source_path: str, edl: list, project_name: str,
                     video_info: dict, gap_frames: int = 2) -> str:
-    """生成FCPXML内容"""
+    """生成FCPXML 1.10合规内容"""
 
     fps = video_info['fps']
     fps_num = video_info['fps_num']
@@ -112,8 +114,7 @@ def generate_fcpxml(source_path: str, edl: list, project_name: str,
     total_frames = offset_frames - gap_frames
     total_sec = total_frames / fps
 
-    # 构建FCPXML
-    # 格式定义
+    # 帧间隔时间值
     if fps_den == 1:
         frame_duration = f"1/{fps_num}s"
     else:
@@ -121,32 +122,38 @@ def generate_fcpxml(source_path: str, edl: list, project_name: str,
 
     src_name = os.path.basename(source_path)
 
+    # 构建FCPXML 1.10合规结构
     lines = [
         '<?xml version="1.0" encoding="UTF-8"?>',
         '<!DOCTYPE fcpxml>',
-        '<fcpxml version="1.8">',
+        '<fcpxml version="1.10">',
         '  <resources>',
+        # format: sequence引用
         f'    <format id="r1" frameDuration="{frame_duration}" '
         f'width="{video_info["width"]}" height="{video_info["height"]}"/>',
+        # asset: src在media-rep子元素中，不在asset上
         f'    <asset id="r2" name="{escape(src_name)}" '
-        f'src="file://{source_path}" '
         f'start="0s" duration="{s2f(video_info["duration"])}" '
         f'hasVideo="1" hasAudio="1" '
         f'audioSources="1" audioChannels="{video_info["channels"]}" '
-        f'audioRate="{video_info["sample_rate"]}.0" format="r1"/>',
+        f'audioRate="{video_info["sample_rate"]}" format="r1">',
+        f'      <media-rep kind="original-media" src="file://{source_path}"/>',
+        '    </asset>',
         '  </resources>',
         '  <library>',
         '    <event name="AI粗剪">',
-        f'      <project name="{escape(project_name)}" uid="proj-001">',
-        f'        <sequence duration="{frame_to_fcpxml(total_frames, fps_num, fps_den)}">',
+        f'      <project name="{escape(project_name)}">',
+        # sequence必须有format（DTD #REQUIRED）
+        f'        <sequence format="r1" duration="{frame_to_fcpxml(total_frames, fps_num, fps_den)}">',
         '          <spine>',
     ]
 
     for c in clips:
+        # asset-clip: format可选（#IMPLIED），不写让FCPX继承parent
         lines.append(
             f'            <asset-clip ref="r2" name="{escape(c["label"])}" '
             f'offset="{c["offset"]}" start="{c["start"]}" '
-            f'duration="{c["duration"]}" format="r1" audioRole="dialogue"/>'
+            f'duration="{c["duration"]}" audioRole="dialogue"/>'
         )
 
     lines.extend([
