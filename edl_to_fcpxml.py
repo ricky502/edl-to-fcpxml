@@ -120,6 +120,37 @@ def generate_fcpxml(source_path: str, edl: list, project_name: str,
     else:
         frame_duration = f"{fps_den}/{fps_num}s"
 
+    # Apple预定义格式名映射（FCPX必须识别）
+    format_name_map = {
+        (1920, 1080, 23.976): "FFVideoFormat1080p2398",
+        (1920, 1080, 24): "FFVideoFormat1080p24",
+        (1920, 1080, 25): "FFVideoFormat1080p25",
+        (1920, 1080, 29.97): "FFVideoFormat1080p2997",
+        (1920, 1080, 30): "FFVideoFormat1080p30",
+        (1920, 1080, 50): "FFVideoFormat1080p50",
+        (1920, 1080, 59.94): "FFVideoFormat1080p5994",
+        (1920, 1080, 60): "FFVideoFormat1080p60",
+        (3840, 2160, 23.976): "FFVideoFormat2160p2398",
+        (3840, 2160, 24): "FFVideoFormat2160p24",
+        (3840, 2160, 25): "FFVideoFormat2160p25",
+        (3840, 2160, 29.97): "FFVideoFormat2160p2997",
+        (3840, 2160, 30): "FFVideoFormat2160p30",
+        (3840, 2160, 60): "FFVideoFormat2160p60",
+        (1280, 720, 23.976): "FFVideoFormat720p2398",
+        (1280, 720, 30): "FFVideoFormat720p30",
+        (1280, 720, 60): "FFVideoFormat720p60",
+    }
+    fmt_key = (video_info['width'], video_info['height'], video_info['fps'])
+    fmt_name = format_name_map.get(fmt_key)
+    if not fmt_name:
+        # 尝试四舍五入帧率匹配
+        for (w, h, f), name in format_name_map.items():
+            if w == video_info['width'] and h == video_info['height'] and abs(f - video_info['fps']) < 0.1:
+                fmt_name = name
+                break
+    if not fmt_name:
+        fmt_name = f"FFVideoFormat{video_info['height']}p{int(video_info['fps'])}"
+
     src_name = os.path.basename(source_path)
 
     # 构建FCPXML 1.10合规结构
@@ -128,8 +159,8 @@ def generate_fcpxml(source_path: str, edl: list, project_name: str,
         '<!DOCTYPE fcpxml>',
         '<fcpxml version="1.10">',
         '  <resources>',
-        # format: sequence引用
-        f'    <format id="r1" frameDuration="{frame_duration}" '
+        # format: 用Apple预定义格式名，FCPX才能识别
+        f'    <format id="r1" name="{fmt_name}" frameDuration="{frame_duration}" '
         f'width="{video_info["width"]}" height="{video_info["height"]}"/>',
         # asset: src在media-rep子元素中，不在asset上
         f'    <asset id="r2" name="{escape(src_name)}" '
