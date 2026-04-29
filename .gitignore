@@ -1,0 +1,4 @@
+__pycache__/
+*.pyc
+*.fcpxml
+.DS_Store
